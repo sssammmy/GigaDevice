@@ -17,10 +17,16 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL ||
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'bookings.db');
 const CONFIG_PATH = process.env.EVENT_CONFIG || path.join(__dirname, 'config', 'event.json');
-const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Accept common variations of the setting name, such as NOTIFY_EMAIL or
+// Notify_Emails, since a small typo in the host's settings is easy to miss.
+const NOTIFY_KEY =
+  'NOTIFY_EMAILS' in process.env
+    ? 'NOTIFY_EMAILS'
+    : Object.keys(process.env).find((k) => /^noti+fy?(cation)?s?e?mails?$/.test(k.toLowerCase().replace(/[^a-z]/g, '')));
+const NOTIFY_EMAILS = String((NOTIFY_KEY && process.env[NOTIFY_KEY]) || '')
+  .split(/[,;\s]+/)
+  .map((s) => s.trim().replace(/^<|>$/g, ''))
+  .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
 
 const event = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 validateEventConfig(event);
@@ -683,7 +689,12 @@ app.post('/api/admin/test-email', requireAdmin, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Email is not set up. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET in Render.' });
   }
   if (!NOTIFY_EMAILS.length) {
-    return res.status(400).json({ ok: false, error: 'NOTIFY_EMAILS is empty. Add your email address in Render.' });
+    return res.status(400).json({
+      ok: false,
+      error: NOTIFY_KEY
+        ? `The setting ${NOTIFY_KEY} has no valid email address. Check its value in Render.`
+        : 'No NOTIFY_EMAILS setting found. In Render, add NOTIFY_EMAILS (spelled exactly) with your email, then save.',
+    });
   }
   try {
     await deliver({
