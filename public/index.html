@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meet GigaDevice Americas at CES</title>
+  <meta name="description" content="Book a meeting with the GigaDevice Americas team at CES in Las Vegas.">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/">
+        <img src="/assets/logo.svg" alt="GigaDevice">
+        <span class="brand-sub">Americas</span>
+      </a>
+      <a class="header-link" id="contactLink" href="#">Contact us</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow" id="eventName">CES</p>
+      <h1>Book a meeting with GigaDevice Americas</h1>
+      <p class="lead" id="tagline">Meet our team in Las Vegas to talk MCUs, memory, sensors, and your next design.</p>
+      <div class="facts">
+        <div class="fact"><strong>When</strong><span id="factDates">Loading</span></div>
+        <div class="fact"><strong>Where</strong><span id="factVenue">Las Vegas</span></div>
+        <div class="fact"><strong>Booth</strong><span id="factBooth">TBA</span></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <form id="bookingForm" novalidate>
+      <section class="card step">
+        <div class="step-head">
+          <span class="step-num">1</span>
+          <div><h2>Who is booking?</h2><p>Customers and GigaDevice team members can both book here.</p></div>
+        </div>
+        <div class="toggle" role="radiogroup" aria-label="Who is booking">
+          <label>
+            <input type="radio" name="requesterType" value="customer" checked>
+            <span class="t-title">I am a customer or partner</span>
+            <span class="t-sub">Book time with the GigaDevice Americas team.</span>
+          </label>
+          <label>
+            <input type="radio" name="requesterType" value="rsm">
+            <span class="t-title">I am a GigaDevice RSM or rep</span>
+            <span class="t-sub">Book a meeting on behalf of your customer.</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="card step">
+        <div class="step-head">
+          <span class="step-num">2</span>
+          <div><h2>Pick a time</h2><p id="slotHint">Each meeting is 30 minutes.</p></div>
+        </div>
+        <div class="days" id="days" role="tablist" aria-label="Show days"></div>
+        <div class="slots" id="slots" aria-live="polite"><p class="small">Loading available times</p></div>
+        <p class="tz-note" id="tzNote"></p>
+        <div class="selected-slot hidden" id="selectedSlot"></div>
+        <div class="field" data-field="slot"><div class="err" id="err-slot"></div></div>
+      </section>
+
+      <section class="card step">
+        <div class="step-head">
+          <span class="step-num">3</span>
+          <div><h2>Your details</h2><p id="detailsHint">Tell us who we are meeting.</p></div>
+        </div>
+
+        <div class="grid rsm-only hidden" id="rsmFields">
+          <h3 class="subhead full">Your information</h3>
+          <div class="field" data-field="rsmName">
+            <label for="rsmName">Your name</label>
+            <input id="rsmName" name="rsmName" autocomplete="name" maxlength="120">
+            <div class="err" id="err-rsmName"></div>
+          </div>
+          <div class="field" data-field="rsmEmail">
+            <label for="rsmEmail">Your email</label>
+            <input id="rsmEmail" name="rsmEmail" type="email" autocomplete="email" maxlength="160">
+            <div class="err" id="err-rsmEmail"></div>
+          </div>
+          <div class="field" data-field="rsmRegion">
+            <label for="rsmRegion">Region <span class="opt">(optional)</span></label>
+            <select id="rsmRegion" name="rsmRegion"><option value="">Select region</option></select>
+            <div class="err" id="err-rsmRegion"></div>
+          </div>
+          <h3 class="subhead full">Customer information</h3>
+        </div>
+
+        <div class="grid">
+          <div class="field" data-field="firstName">
+            <label for="firstName">First name</label>
+            <input id="firstName" name="firstName" autocomplete="given-name" maxlength="80" required>
+            <div class="err" id="err-firstName"></div>
+          </div>
+          <div class="field" data-field="lastName">
+            <label for="lastName">Last name</label>
+            <input id="lastName" name="lastName" autocomplete="family-name" maxlength="80" required>
+            <div class="err" id="err-lastName"></div>
+          </div>
+          <div class="field" data-field="company">
+            <label for="company">Company</label>
+            <input id="company" name="company" autocomplete="organization" maxlength="120" required>
+            <div class="err" id="err-company"></div>
+          </div>
+          <div class="field" data-field="jobTitle">
+            <label for="jobTitle">Job title <span class="opt">(optional)</span></label>
+            <input id="jobTitle" name="jobTitle" autocomplete="organization-title" maxlength="120">
+          </div>
+          <div class="field" data-field="email">
+            <label for="email">Email <span class="opt hidden" id="emailOpt">(optional, gets a copy)</span></label>
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="160">
+            <div class="err" id="err-email"></div>
+          </div>
+          <div class="field" data-field="phone">
+            <label for="phone">Mobile phone <span class="opt">(optional)</span></label>
+            <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40">
+          </div>
+          <div class="field" data-field="attendees">
+            <label for="attendees">Number of attendees</label>
+            <select id="attendees" name="attendees"></select>
+            <div class="err" id="err-attendees"></div>
+          </div>
+          <div class="field customer-only" data-field="gdContact">
+            <label for="gdContact">Your GigaDevice contact <span class="opt">(optional)</span></label>
+            <input id="gdContact" name="gdContact" maxlength="120" placeholder="Sales rep or RSM name">
+          </div>
+          <fieldset class="field full">
+            <legend>Topics of interest <span class="opt">(select any)</span></legend>
+            <div class="chips" id="topics"></div>
+          </fieldset>
+          <div class="field full">
+            <label for="notes">What would you like to discuss? <span class="opt">(optional)</span></label>
+            <textarea id="notes" name="notes" maxlength="2000" placeholder="Projects, applications, part numbers, or questions for our team"></textarea>
+          </div>
+          <div class="hp" aria-hidden="true">
+            <label for="website">Website</label>
+            <input id="website" name="website" tabindex="-1" autocomplete="off">
+          </div>
+        </div>
+      </section>
+
+      <section class="card step">
+        <div class="actions">
+          <button class="btn btn-primary" type="submit" id="submitBtn">Confirm meeting</button>
+          <span class="form-error" id="formError" role="alert"></span>
+        </div>
+        <p class="small">By booking, you agree that GigaDevice may use your contact details to coordinate this meeting and follow up afterward.</p>
+      </section>
+    </form>
+
+    <section class="card confirm hidden" id="confirmation" tabindex="-1">
+      <div class="check" aria-hidden="true">&#10003;</div>
+      <h2>Your meeting is confirmed</h2>
+      <p>Confirmation number <span class="ref" id="cRef"></span></p>
+      <table class="summary"><tbody id="cSummary"></tbody></table>
+      <p class="small" id="cNote"></p>
+      <div class="actions">
+        <a class="btn btn-primary" id="cIcs" href="#">Add to calendar</a>
+        <a class="btn btn-ghost" id="cManage" href="#">Manage booking</a>
+        <a class="btn btn-ghost" href="/">Book another meeting</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>&copy; <span id="year"></span> GigaDevice Americas. All rights reserved.</span>
+      <span>Questions? <a id="footerEmail" href="#">Email our team</a></span>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

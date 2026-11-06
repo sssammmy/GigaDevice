@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>CES Bookings Admin | GigaDevice Americas</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin">
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/">
+        <img src="/assets/logo.svg" alt="GigaDevice">
+        <span class="brand-sub">CES Admin</span>
+      </a>
+      <a class="header-link" href="/" target="_blank" rel="noopener">View public site</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card admin-bar">
+      <div class="stats">
+        <div class="stat"><b id="sTotal">0</b><span>Confirmed meetings</span></div>
+        <div class="stat"><b id="sCustomer">0</b><span>Booked by customers</span></div>
+        <div class="stat"><b id="sRsm">0</b><span>Booked by RSMs</span></div>
+        <div class="stat"><b id="sOpen">0</b><span>Open room slots</span></div>
+      </div>
+      <div class="filters">
+        <div class="field">
+          <label for="fDay">Day</label>
+          <select id="fDay"><option value="">All days</option></select>
+        </div>
+        <div class="field">
+          <label for="fStatus">Status</label>
+          <select id="fStatus">
+            <option value="confirmed">Confirmed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fSearch">Search</label>
+          <input id="fSearch" type="search" placeholder="Company, name, RSM">
+        </div>
+        <a class="btn btn-ghost" href="/api/admin/bookings.csv">Export CSV</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table class="bookings">
+          <thead>
+            <tr>
+              <th>When</th><th>Room</th><th>Company</th><th>Contact</th><th>Topics</th><th>Booked by</th><th>Notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="small" id="empty" hidden>No bookings match these filters.</p>
+    </section>
+
+    <section class="card mt">
+      <div class="grid-view">
+        <h2 class="m0">Room schedule</h2>
+        <div class="table-wrap" id="schedule"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

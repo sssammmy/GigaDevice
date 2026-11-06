@@ -1,0 +1,45 @@
+{
+  "company": "GigaDevice Americas",
+  "eventName": "CES 2027",
+  "tagline": "Meet the GigaDevice Americas team at CES 2027 in Las Vegas.",
+  "city": "Las Vegas, NV",
+  "venue": "Las Vegas Convention Center",
+  "booth": "Booth number to be announced",
+  "meetingLocationNote": "Meetings are held at the GigaDevice meeting space. Please check in at the front desk 5 minutes early.",
+  "timezone": "America/Los_Angeles",
+  "timezoneLabel": "PT",
+  "slotMinutes": 30,
+  "rooms": ["Meeting Room A", "Meeting Room B", "Meeting Room C"],
+  "days": [
+    { "date": "2027-01-06", "start": "10:00", "end": "18:00" },
+    { "date": "2027-01-07", "start": "09:00", "end": "18:00" },
+    { "date": "2027-01-08", "start": "09:00", "end": "18:00" },
+    { "date": "2027-01-09", "start": "09:00", "end": "16:00" }
+  ],
+  "blockedSlots": [
+    { "date": "2027-01-06", "time": "12:00" },
+    { "date": "2027-01-07", "time": "12:00" },
+    { "date": "2027-01-08", "time": "12:00" }
+  ],
+  "topics": [
+    "GD32 Microcontrollers (MCU)",
+    "SPI NOR Flash",
+    "SPI NAND and Parallel NAND Flash",
+    "DRAM and Specialty Memory",
+    "Sensors",
+    "Analog and Power Management",
+    "Automotive Solutions",
+    "Industrial and IoT",
+    "AI at the Edge",
+    "Pricing, Supply and Partnership"
+  ],
+  "regions": [
+    "West",
+    "Central",
+    "East",
+    "Canada",
+    "Mexico and Latin America",
+    "Other"
+  ],
+  "contactEmail": "ces@example.com"
+}

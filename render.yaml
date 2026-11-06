@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: gigadevice-ces-booking
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: DB_PATH
+        value: /var/data/bookings.db
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: NOTIFY_EMAILS
+        sync: false
+    disk:
+      name: bookings
+      mountPath: /var/data
+      sizeGB: 1
