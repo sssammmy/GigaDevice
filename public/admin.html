@@ -27,7 +27,7 @@
         <div class="stat"><b id="sTotal">0</b><span>Confirmed meetings</span></div>
         <div class="stat"><b id="sCustomer">0</b><span>Booked by customers</span></div>
         <div class="stat"><b id="sRsm">0</b><span>Booked by RSMs</span></div>
-        <div class="stat"><b id="sOpen">0</b><span>Open room slots</span></div>
+        <div class="stat"><b id="sOpen">0</b><span>Open time slots</span></div>
       </div>
       <div class="filters">
         <div class="field">
@@ -48,6 +48,20 @@
         </div>
         <a class="btn btn-ghost" href="/api/admin/bookings.csv">Export CSV</a>
       </div>
+    </section>
+
+    <section class="card email-panel">
+      <div class="email-head">
+        <div>
+          <h2 class="m0">Email notifications</h2>
+          <p class="small" id="emailMode">Checking email setup</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-ghost" id="testEmailBtn" type="button">Send test email</button>
+          <span id="testEmailResult" role="status"></span>
+        </div>
+      </div>
+      <ul class="email-log" id="emailLog"></ul>
     </section>
 
     <section class="card">

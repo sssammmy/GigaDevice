@@ -19,15 +19,11 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: SMTP_HOST
+      # Email: Render's free plan blocks SMTP, so email goes through a
+      # Gmail relay script. See tools/gmail-relay.gs.
+      - key: GMAIL_SCRIPT_URL
         sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: SMTP_FROM
+      - key: GMAIL_SCRIPT_SECRET
         sync: false
       - key: NOTIFY_EMAILS
         sync: false

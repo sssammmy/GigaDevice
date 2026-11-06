@@ -127,10 +127,49 @@
       return;
     }
     await load();
+    setTimeout(() => loadEmail().catch(() => {}), 2500);
   }
+
+  async function loadEmail() {
+    const res = await fetch('/api/admin/email-status', { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) return;
+    const s = await res.json();
+    const mode = { gmail: 'Sending through your Gmail relay', smtp: 'Sending through SMTP', off: 'Email is OFF. Set it up in Render to get notifications.' }[s.mode];
+    $('emailMode').textContent = s.mode === 'off' ? mode : `${mode}. Booking alerts go to: ${s.notify.length ? s.notify.join(', ') : 'nobody (NOTIFY_EMAILS is empty)'}`;
+    $('emailMode').className = s.mode === 'off' || !s.notify.length ? 'small err-text' : 'small';
+    $('emailLog').replaceChildren(
+      ...s.log.slice(0, 8).map((e) =>
+        el('li', {}, [
+          el('span', { class: e.ok ? 'ok' : 'fail', text: e.ok ? 'Sent ' : 'Failed ' }),
+          `${new Date(e.at).toLocaleString()} | ${e.subject} | to ${e.to}`,
+          e.error ? el('div', { class: 'err-text', text: e.error }) : '',
+        ])
+      )
+    );
+  }
+
+  $('testEmailBtn').addEventListener('click', async () => {
+    const btn = $('testEmailBtn');
+    const out = $('testEmailResult');
+    btn.disabled = true;
+    out.className = 'small';
+    out.textContent = 'Sending';
+    try {
+      const res = await fetch('/api/admin/test-email', { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      out.className = data.ok ? 'ok-text' : 'err-text';
+      out.textContent = data.ok ? `Sent to ${data.to.join(', ')}. Check your inbox and spam folder.` : data.error || 'Test failed.';
+    } catch {
+      out.className = 'err-text';
+      out.textContent = 'Network error.';
+    }
+    btn.disabled = false;
+    loadEmail();
+  });
 
   ['fDay', 'fStatus'].forEach((id) => $(id).addEventListener('change', render));
   $('fSearch').addEventListener('input', render);
   load().catch((e) => alert(e.message));
-  setInterval(() => load().catch(() => {}), 60000);
+  loadEmail().catch(() => {});
+  setInterval(() => { load().catch(() => {}); loadEmail().catch(() => {}); }, 60000);
 })();

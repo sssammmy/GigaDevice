@@ -48,7 +48,25 @@ The header uses the official GigaDevice mark and white wordmark from `public/ass
 
 ## Email
 
-Set the `SMTP_*` variables to send confirmation and cancellation emails with a calendar invite attached. `NOTIFY_EMAILS` takes a comma separated list of internal addresses that receive a copy of every booking. Leave `SMTP_HOST` blank to turn email off. Office 365, Google Workspace, SendGrid and similar SMTP services all work.
+Render's free plan blocks normal email (SMTP), so the site sends email through a small Google Apps Script that uses your own Gmail account. It is free and allows about 100 recipients a day.
+
+1. Sign in to the Gmail account that should send the emails and open https://script.google.com. Click New project.
+2. Paste the contents of `tools/gmail-relay.gs`. Change `SECRET` to a long random phrase. Save.
+3. Click Deploy, then New deployment, type Web app. Set Execute as Me and Who has access Anyone. Click Deploy and allow access when Google asks. On the warning screen click Advanced, then Go to project.
+4. Copy the Web app URL that ends in `/exec`.
+5. In Render, open the service, then Environment, and add:
+   * `GMAIL_SCRIPT_URL` with the Web app URL
+   * `GMAIL_SCRIPT_SECRET` with the same phrase as `SECRET`
+   * `NOTIFY_EMAILS` with your address. Separate several with commas.
+6. Save. After the restart, open `/admin` and click Send test email.
+
+The admin page shows whether email is on, who gets alerts, and the last emails sent or failed with the reason.
+
+What gets sent:
+* Every address in `NOTIFY_EMAILS` gets an alert for each new booking and cancellation
+* The customer and the RSM get a confirmation with a calendar invite and a cancel link, and a notice if the meeting is cancelled. When you cancel from the admin page, choose OK on the second prompt to email them
+
+On hosts that allow SMTP you can use the `SMTP_*` settings instead.
 
 ## Deploy for free
 
@@ -68,7 +86,7 @@ Free setup: Render hosts the site at a free web address like `https://gigadevice
 3. When asked, fill in:
    * `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` from step 1
    * `ADMIN_PASSWORD`, a strong password for `/admin`
-   * Email settings if you want confirmation emails, otherwise leave them blank
+   * Email settings can be left blank for now. See the Email section
 4. Click Apply. In a few minutes the site is live at `https://gigadevice-ces.onrender.com`. If that name is taken, Render adds a few characters. The final address is shown at the top of the service page.
 
 **Step 3. Keep it awake (optional, free)**

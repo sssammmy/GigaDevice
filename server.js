@@ -369,15 +369,82 @@ function buildIcs(row) {
 // Email (optional)
 // ---------------------------------------------------------------------------
 
+// Two ways to send email:
+// 1. Gmail relay (recommended on Render's free plan, which blocks SMTP):
+//    a small Google Apps Script web app that sends from your own Gmail.
+//    Set GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET. See tools/gmail-relay.gs.
+// 2. SMTP: set SMTP_HOST and related settings. Needs a host that allows SMTP.
+const GMAIL_SCRIPT_URL = (process.env.GMAIL_SCRIPT_URL || '').trim();
+const GMAIL_SCRIPT_SECRET = process.env.GMAIL_SCRIPT_SECRET || '';
+
 let transporter = null;
-if (process.env.SMTP_HOST) {
+if (!GMAIL_SCRIPT_URL && process.env.SMTP_HOST) {
   const nodemailer = require('nodemailer');
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: Number(process.env.SMTP_PORT) === 465,
     auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+    connectionTimeout: 15000,
   });
+}
+
+const emailMode = GMAIL_SCRIPT_URL ? 'gmail' : transporter ? 'smtp' : 'off';
+const emailLog = []; // recent results, shown on the admin page
+
+function logEmail(entry) {
+  emailLog.unshift({ at: new Date().toISOString(), ...entry });
+  emailLog.length = Math.min(emailLog.length, 20);
+  (entry.ok ? console.log : console.error)(`Email ${entry.ok ? 'sent' : 'FAILED'}: ${entry.subject} to ${entry.to}${entry.error ? ` (${entry.error})` : ''}`);
+}
+
+async function deliver({ to, subject, text, replyTo, attachments = [] }) {
+  if (!to.length) return;
+  try {
+    if (emailMode === 'gmail') {
+      const res = await fetch(GMAIL_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(30000),
+        body: JSON.stringify({
+          secret: GMAIL_SCRIPT_SECRET,
+          to: to.join(','),
+          subject,
+          text,
+          replyTo: replyTo || '',
+          fromName: event.company,
+          attachments: attachments.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
+        }),
+      });
+      const body = await res.text();
+      let data;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        throw new Error(`Gmail relay returned an unexpected response (HTTP ${res.status}). Check the script is deployed with access set to Anyone.`);
+      }
+      if (!data.ok) throw new Error(`Gmail relay: ${data.error || 'unknown error'}`);
+    } else if (emailMode === 'smtp') {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: to.join(', '),
+        replyTo: replyTo || undefined,
+        subject,
+        text,
+        attachments,
+      });
+    } else {
+      throw new Error('Email is not configured.');
+    }
+    logEmail({ ok: true, to: to.join(', '), subject });
+  } catch (err) {
+    if (emailMode === 'gmail' && !/^Gmail relay/.test(err.message)) {
+      err.message = `Could not reach the Gmail relay (${err.message}). Check GMAIL_SCRIPT_URL in Render.`;
+    }
+    logEmail({ ok: false, to: to.join(', '), subject, error: err.message });
+    throw err;
+  }
 }
 
 function bookingSummaryText(row) {
@@ -401,11 +468,10 @@ function bookingSummaryText(row) {
 }
 
 async function sendEmails(row, kind) {
-  if (!transporter) {
+  if (emailMode === 'off') {
     console.log(`[email disabled] ${kind} ${row.ref}`);
     return;
   }
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
   const p = publicBooking(row);
   const recipients = [row.email, row.rsm_email].filter(Boolean);
   const subject =
@@ -419,24 +485,16 @@ async function sendEmails(row, kind) {
   const text = `${intro}\n\n${bookingSummaryText(row)}\n\n${kind === 'cancelled' ? '' : `${event.meetingLocationNote}\n\nManage or cancel your booking: ${p.manageUrl}\n\n`}Questions? Contact ${event.contactEmail}\n`;
   const ics = { filename: `${p.ref}.ics`, content: buildIcs(row), contentType: 'text/calendar; charset=utf-8' };
 
-  const jobs = [];
-  if (recipients.length) {
-    jobs.push(transporter.sendMail({ from, to: recipients.join(', '), subject, text, attachments: [ics] }));
-  }
-  if (NOTIFY_EMAILS.length) {
-    jobs.push(
-      transporter.sendMail({
-        from,
-        to: NOTIFY_EMAILS.join(', '),
-        replyTo: row.email || row.rsm_email || undefined,
-        subject: `[CES booking ${kind}] ${row.company} ${p.dateLabel} ${formatTime(row.time)}`,
-        text: bookingSummaryText(row),
-        attachments: [ics],
-      })
-    );
-  }
-  const results = await Promise.allSettled(jobs);
-  for (const r of results) if (r.status === 'rejected') console.error('Email failed:', r.reason?.message);
+  await Promise.allSettled([
+    deliver({ to: recipients, subject, text, replyTo: NOTIFY_EMAILS[0] || event.contactEmail, attachments: [ics] }),
+    deliver({
+      to: NOTIFY_EMAILS,
+      replyTo: row.email || row.rsm_email || undefined,
+      subject: `[CES booking ${kind}] ${row.company} ${p.dateLabel} ${formatTime(row.time)}`,
+      text: bookingSummaryText(row),
+      attachments: [ics],
+    }),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +673,30 @@ app.post('/api/admin/bookings/:ref/cancel', requireAdmin, async (req, res) => {
   res.json({ booking: adminRow(row) });
 });
 
+app.get('/api/admin/email-status', requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ mode: emailMode, notify: NOTIFY_EMAILS, log: emailLog });
+});
+
+app.post('/api/admin/test-email', requireAdmin, async (req, res) => {
+  if (emailMode === 'off') {
+    return res.status(400).json({ ok: false, error: 'Email is not set up. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET in Render.' });
+  }
+  if (!NOTIFY_EMAILS.length) {
+    return res.status(400).json({ ok: false, error: 'NOTIFY_EMAILS is empty. Add your email address in Render.' });
+  }
+  try {
+    await deliver({
+      to: NOTIFY_EMAILS,
+      subject: `Test email from the ${event.eventName} booking site`,
+      text: `Email is working. Booking notifications will be sent to: ${NOTIFY_EMAILS.join(', ')}`,
+    });
+    res.json({ ok: true, to: NOTIFY_EMAILS });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('/api/admin/bookings.csv', requireAdmin, async (req, res) => {
   const cols = [
     ['ref', 'Confirmation'], ['status', 'Status'], ['date', 'Date'], ['timeLabel', 'Time'], ['room', 'Room'],
@@ -677,7 +759,7 @@ if (require.main === module) {
         console.log(`GigaDevice CES booking site running at ${PUBLIC_URL}`);
         console.log(process.env.TURSO_DATABASE_URL ? 'Storing bookings in Turso.' : `Storing bookings in ${path.resolve(DB_PATH)}`);
     if (!ADMIN_PASSWORD) console.warn('ADMIN_PASSWORD is not set. The admin dashboard is disabled.');
-        if (!transporter) console.warn('SMTP is not configured. Confirmation emails are disabled.');
+        console.log(`Email: ${emailMode === 'gmail' ? 'Gmail relay' : emailMode === 'smtp' ? 'SMTP' : 'off'}. Notify: ${NOTIFY_EMAILS.join(', ') || 'nobody'}`);
       });
     })
     .catch((err) => {
