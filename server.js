@@ -380,14 +380,32 @@ function buildIcs(row) {
 //    a small Google Apps Script web app that sends from your own Gmail.
 //    Set GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET. See tools/gmail-relay.gs.
 // 2. SMTP: set SMTP_HOST and related settings. Needs a host that allows SMTP.
-// Find the relay URL even if the setting name has a typo: any setting whose
-// value is an Apps Script web app URL counts.
+// Find the relay URL even if the setting name has a typo. Accepts the web app
+// URL (ending in /exec) or the bare Deployment ID (starts with AKfy).
 const SCRIPT_URL_RE = /^https:\/\/script\.google\.com\/\S+\/exec\/?$/;
-const GMAIL_KEY =
-  (process.env.GMAIL_SCRIPT_URL || '').trim()
-    ? 'GMAIL_SCRIPT_URL'
-    : Object.keys(process.env).find((k) => SCRIPT_URL_RE.test(String(process.env[k]).trim()));
-const GMAIL_SCRIPT_URL = GMAIL_KEY ? String(process.env[GMAIL_KEY]).trim().replace(/\/$/, '') : '';
+const DEPLOY_ID_RE = /^AKfy[\w-]{20,}$/;
+function scriptUrlFrom(value, exactKey = false) {
+  const v = String(value || '').trim().replace(/^["']|["']$/g, '');
+  if (SCRIPT_URL_RE.test(v)) return v.replace(/\/$/, '');
+  // Under the exact setting name, any /exec URL is trusted (used by tests and proxies).
+  if (exactKey && /^https?:\/\/\S+\/exec$/.test(v)) return v;
+  if (DEPLOY_ID_RE.test(v)) return `https://script.google.com/macros/s/${v}/exec`;
+  return '';
+}
+const GMAIL_KEY = scriptUrlFrom(process.env.GMAIL_SCRIPT_URL, true)
+  ? 'GMAIL_SCRIPT_URL'
+  : Object.keys(process.env).find((k) => scriptUrlFrom(process.env[k]));
+const GMAIL_SCRIPT_URL = GMAIL_KEY ? scriptUrlFrom(process.env[GMAIL_KEY], GMAIL_KEY === 'GMAIL_SCRIPT_URL') : '';
+// Explain what is wrong with a GMAIL_SCRIPT_URL value that was not usable.
+function scriptUrlProblem() {
+  const key = Object.keys(process.env).find((k) => /gmail|script/i.test(k) && !/secret/i.test(k));
+  if (!key) return null;
+  const v = String(process.env[key]).trim();
+  if (!v) return `${key} is empty.`;
+  if (/\/dev\/?$/.test(v)) return `${key} ends in /dev. Use the Web app URL that ends in /exec.`;
+  if (/\/edit|\/home\/projects|\/d\//.test(v)) return `${key} is the script editor link. Use the Web app URL from Deploy, Manage deployments. It ends in /exec.`;
+  return `${key} is not a Google script web app URL. It should start with https://script.google.com/macros/ and end in /exec.`;
+}
 const SECRET_KEY =
   'GMAIL_SCRIPT_SECRET' in process.env
     ? 'GMAIL_SCRIPT_SECRET'
@@ -695,6 +713,13 @@ app.post('/api/admin/bookings/:ref/cancel', requireAdmin, async (req, res) => {
   res.json({ booking: adminRow(row) });
 });
 
+// Names (never values) of settings the user added, to help spot typos.
+const SYSTEM_ENV = /^(PATH|HOME|HOSTNAME|PWD|SHLVL|TERM|LANG|LC_|NODE_|NPM_|npm_|RENDER|IS_PULL_REQUEST|PORT$|_|YARN|COREPACK|XDG_|USER$|SHELL$|OLDPWD|TZ$|GIT_|HTTP|NO_PROXY|SSL_|CI$|DEBIAN|PYTHON|JAVA|GO|RUBY|BUN)/i;
+function visibleSettingNames() {
+  const names = Object.keys(process.env).filter((k) => !SYSTEM_ENV.test(k)).sort();
+  return names.length ? names.join(', ') : 'none';
+}
+
 app.get('/api/admin/email-status', requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ mode: emailMode, notify: NOTIFY_EMAILS, log: emailLog, smtpBlocked: emailMode === 'off' && Boolean(process.env.SMTP_HOST) });
@@ -704,9 +729,9 @@ app.post('/api/admin/test-email', requireAdmin, async (req, res) => {
   if (emailMode === 'off') {
     return res.status(400).json({
       ok: false,
-      error: process.env.SMTP_HOST
-        ? 'Render blocks SMTP email. Add GMAIL_SCRIPT_URL (the Google script URL ending in /exec) and GMAIL_SCRIPT_SECRET in Render, and remove the SMTP settings.'
-        : 'Email is not set up. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET in Render.',
+      error:
+        scriptUrlProblem() ||
+        `No Google script URL found in Render. Add GMAIL_SCRIPT_URL with the Web app URL ending in /exec${process.env.SMTP_HOST ? ', and remove the SMTP settings' : ''}. Settings the site can see: ${visibleSettingNames()}.`,
     });
   }
   if (emailMode === 'gmail' && !GMAIL_SCRIPT_SECRET) {
