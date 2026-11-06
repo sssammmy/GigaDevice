@@ -387,6 +387,11 @@ const DEPLOY_ID_RE = /^AKfy[\w-]{20,}$/;
 function scriptUrlFrom(value, exactKey = false) {
   const v = String(value || '').trim().replace(/^["']|["']$/g, '');
   if (SCRIPT_URL_RE.test(v)) return v.replace(/\/$/, '');
+  // A web app URL inside extra text, or with ?query or #hash after /exec.
+  const inside = v.match(/https:\/\/script\.google\.com\/[^\s"'<>?#]+?\/exec(?=$|[\s"'<>?#/])/);
+  if (inside) return inside[0];
+  const id = v.match(/(?:^|[^\w-])(AKfy[\w-]{20,})(?:$|[^\w-])/);
+  if (id) return `https://script.google.com/macros/s/${id[1]}/exec`;
   // Under the exact setting name, any /exec URL is trusted (used by tests and proxies).
   if (exactKey && /^https?:\/\/\S+\/exec$/.test(v)) return v;
   if (DEPLOY_ID_RE.test(v)) return `https://script.google.com/macros/s/${v}/exec`;
@@ -402,9 +407,14 @@ function scriptUrlProblem() {
   if (!key) return null;
   const v = String(process.env[key]).trim();
   if (!v) return `${key} is empty.`;
-  if (/\/dev\/?$/.test(v)) return `${key} ends in /dev. Use the Web app URL that ends in /exec.`;
-  if (/\/edit|\/home\/projects|\/d\//.test(v)) return `${key} is the script editor link. Use the Web app URL from Deploy, Manage deployments. It ends in /exec.`;
-  return `${key} is not a Google script web app URL. It should start with https://script.google.com/macros/ and end in /exec.`;
+  const fix = 'In the Google script, click Deploy, then Manage deployments, and copy the Web app URL. It starts with https://script.google.com/macros/s/ and ends in /exec.';
+  if (/googleusercontent\.com/i.test(v)) return `${key} is the address your browser showed after opening the script, which only works once. ${fix}`;
+  if (/\/dev\/?$/.test(v)) return `${key} ends in /dev, which is the test link. ${fix}`;
+  if (/\/edit|\/home\/projects|\/d\//.test(v)) return `${key} is the script editor link. ${fix}`;
+  if (/^1[\w-]{30,}$/.test(v)) return `${key} looks like the Script ID from Project Settings. ${fix}`;
+  if (/@/.test(v)) return `${key} contains an email address, not the script link. ${fix}`;
+  const preview = v.length > 60 ? `${v.slice(0, 40)}...${v.slice(-12)}` : v;
+  return `${key} is not a Google script web app URL. It currently starts "${preview.slice(0, 40)}"${v.length > 40 ? ` and ends "${v.slice(-12)}"` : ''} (${v.length} characters). ${fix}`;
 }
 const SECRET_KEY =
   'GMAIL_SCRIPT_SECRET' in process.env
@@ -480,7 +490,7 @@ async function deliver({ to, subject, text, replyTo, attachments = [] }) {
     if (emailMode === 'gmail' && !/^Gmail relay/.test(err.message)) {
       err.message = /abort|timeout/i.test(err.message)
         ? 'The Google script did not answer within 30 seconds. Open the script URL in a browser to check it shows "Gmail relay is running", then try again.'
-        : `Could not reach the Google script (${err.message}). Check GMAIL_SCRIPT_URL in Render.`;
+        : `Could not reach the Google script (${err.message}). Check ${GMAIL_KEY} in Render.`;
     }
     logEmail({ ok: false, to: to.join(', '), subject, error: err.message });
     throw err;
