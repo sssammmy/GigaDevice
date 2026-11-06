@@ -116,7 +116,9 @@ test('owner can view, download ics, and cancel', async () => {
   const ics = await fetch(base + r.body.icsUrl);
   const text = await ics.text();
   assert.match(text, /BEGIN:VEVENT/);
-  assert.match(text, /DTSTART:20270106T183000Z/);
+  const half = firstDay.start.replace(':00', ':30');
+  const expected = zonedToUtc(firstDay.date, half, event.timezone).toISOString().replace(/[-:]/g, '').replace('.000', '');
+  assert.ok(text.includes(`DTSTART:${expected}`), `expected DTSTART:${expected}`);
 
   const c = await post(`/api/bookings/${ref}/cancel?token=${token}`, {});
   assert.strictEqual(c.status, 200);
