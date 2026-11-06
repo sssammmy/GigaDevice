@@ -44,7 +44,7 @@ CES 2027 dates are preset to January 6 to 9, 2027. Confirm the dates and booth n
 
 ## Branding
 
-Replace `public/assets/logo.svg` with the official GigaDevice logo (white version for the dark header) and `public/assets/favicon.svg` with the brand icon. Brand colors are defined at the top of `public/styles.css`.
+The header uses the official GigaDevice mark and white wordmark from `public/assets`. Replace those files to change the logo. Brand colors are defined at the top of `public/styles.css`.
 
 ## Email
 
