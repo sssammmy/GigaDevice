@@ -10,6 +10,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gd-ces-'));
 process.env.DB_PATH = path.join(tmp, 'test.db');
 process.env.ADMIN_PASSWORD = 'secret';
 process.env.PORT = '0';
+process.env.BOOKING_RATE_LIMIT = '100';
 
 const { app, zonedToUtc } = require('../server');
 const event = require('../config/event.json');
@@ -18,6 +19,7 @@ let server;
 let base;
 
 test.before(async () => {
+  await require("../server").ready;
   await new Promise((resolve) => {
     server = app.listen(0, resolve);
   });
@@ -135,4 +137,16 @@ test('admin requires password and lists bookings', async () => {
 test('honeypot blocks bots', async () => {
   const r = await post('/api/bookings', customer({ website: 'spam.example' }));
   assert.strictEqual(r.status, 400);
+});
+
+test('simultaneous requests never double book a room', async () => {
+  const lastDay = event.days[event.days.length - 1];
+  const target = { date: lastDay.date, time: lastDay.start };
+  const results = await Promise.all(
+    Array.from({ length: event.rooms.length + 3 }, () => post('/api/bookings', customer(target)))
+  );
+  const ok = results.filter((r) => r.status === 201);
+  assert.strictEqual(ok.length, event.rooms.length);
+  assert.strictEqual(new Set(ok.map((r) => r.body.booking.room)).size, event.rooms.length);
+  assert.ok(results.filter((r) => r.status !== 201).every((r) => r.status === 409 || r.status === 429));
 });

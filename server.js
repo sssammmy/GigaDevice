@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const express = require('express');
-const { DatabaseSync } = require('node:sqlite');
+const { createClient } = require('@libsql/client');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -13,7 +13,7 @@ const { DatabaseSync } = require('node:sqlite');
 loadDotEnv(path.join(__dirname, '.env'));
 
 const PORT = Number(process.env.PORT) || 3000;
-const PUBLIC_URL = (process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'bookings.db');
 const CONFIG_PATH = process.env.EVENT_CONFIG || path.join(__dirname, 'config', 'event.json');
@@ -29,11 +29,18 @@ validateEventConfig(event);
 // Database
 // ---------------------------------------------------------------------------
 
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-const db = new DatabaseSync(DB_PATH);
-db.exec(`
-  PRAGMA journal_mode = WAL;
-  CREATE TABLE IF NOT EXISTS bookings (
+// Uses a hosted Turso database when TURSO_DATABASE_URL is set (needed on hosts
+// without a persistent disk, such as Render's free plan). Otherwise a local file.
+let db;
+if (process.env.TURSO_DATABASE_URL) {
+  db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
+} else {
+  fs.mkdirSync(path.dirname(path.resolve(DB_PATH)), { recursive: true });
+  db = createClient({ url: `file:${path.resolve(DB_PATH)}` });
+}
+
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS bookings (
     ref TEXT PRIMARY KEY,
     token TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'confirmed',
@@ -55,29 +62,37 @@ db.exec(`
     rsm_region TEXT,
     created_at TEXT NOT NULL,
     cancelled_at TEXT
-  );
-  CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
-    ON bookings(date, time, room) WHERE status = 'confirmed';
-`);
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
+    ON bookings(date, time, room) WHERE status = 'confirmed'`,
+];
 
-const stmt = {
-  activeInSlot: db.prepare(
-    "SELECT room FROM bookings WHERE status = 'confirmed' AND date = ? AND time = ?"
-  ),
-  activeCounts: db.prepare(
-    "SELECT date, time, COUNT(*) AS n FROM bookings WHERE status = 'confirmed' GROUP BY date, time"
-  ),
-  insert: db.prepare(`
-    INSERT INTO bookings (ref, token, date, time, room, requester_type, first_name, last_name,
+const ready = db.batch(SCHEMA, 'write');
+
+const SQL = {
+  activeInSlot: "SELECT room FROM bookings WHERE status = 'confirmed' AND date = ? AND time = ?",
+  activeCounts: "SELECT date, time, COUNT(*) AS n FROM bookings WHERE status = 'confirmed' GROUP BY date, time",
+  insert: `INSERT INTO bookings (ref, token, date, time, room, requester_type, first_name, last_name,
       email, phone, company, job_title, attendees, topics, notes, rsm_name, rsm_email, rsm_region, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `),
-  byRef: db.prepare('SELECT * FROM bookings WHERE ref = ?'),
-  cancel: db.prepare(
-    "UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE ref = ? AND status = 'confirmed'"
-  ),
-  all: db.prepare('SELECT * FROM bookings ORDER BY date, time, room'),
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  byRef: 'SELECT * FROM bookings WHERE ref = ?',
+  cancel: "UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE ref = ? AND status = 'confirmed'",
+  all: 'SELECT * FROM bookings ORDER BY date, time, room',
 };
+
+async function query(sql, args = []) {
+  await ready;
+  return (await db.execute({ sql, args })).rows;
+}
+
+async function getByRef(ref) {
+  return (await query(SQL.byRef, [ref]))[0] || null;
+}
+
+async function cancelBooking(ref) {
+  await query(SQL.cancel, [new Date().toISOString(), ref]);
+  return getByRef(ref);
+}
 
 // ---------------------------------------------------------------------------
 // Slots and time helpers
@@ -158,9 +173,9 @@ function isPast(date, time, now = new Date()) {
   return zonedToUtc(date, time, event.timezone) <= now;
 }
 
-function availability(now = new Date()) {
+async function availability(now = new Date()) {
   const counts = new Map();
-  for (const row of stmt.activeCounts.all()) counts.set(`${row.date} ${row.time}`, row.n);
+  for (const row of await query(SQL.activeCounts)) counts.set(`${row.date} ${row.time}`, Number(row.n));
   const capacity = event.rooms.length;
   return event.days.map((day) => ({
     date: day.date,
@@ -239,30 +254,36 @@ function newRef() {
   return ref;
 }
 
+// Serialize booking writes in this process so two requests never race for the
+// same room. The unique index is a second guard if more than one instance runs.
+let writeQueue = Promise.resolve();
 function createBooking(b) {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const used = new Set(stmt.activeInSlot.all(b.date, b.time).map((r) => r.room));
+  const run = writeQueue.then(() => insertBooking(b));
+  writeQueue = run.catch(() => {});
+  return run;
+}
+
+async function insertBooking(b) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const used = new Set((await query(SQL.activeInSlot, [b.date, b.time])).map((r) => r.room));
     const room = event.rooms.find((r) => !used.has(r));
-    if (!room) {
-      db.exec('ROLLBACK');
-      return null;
-    }
+    if (!room) return null;
     const ref = newRef();
     const token = crypto.randomBytes(18).toString('base64url');
-    stmt.insert.run(
-      ref, token, b.date, b.time, room, b.requesterType, b.firstName, b.lastName,
-      b.email || null, b.phone || null, b.company, b.jobTitle || null, b.attendees,
-      JSON.stringify(b.topics), b.notes || null,
-      b.rsmName || null, b.rsmEmail || null, b.rsmRegion || null,
-      new Date().toISOString()
-    );
-    db.exec('COMMIT');
-    return stmt.byRef.get(ref);
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
+    try {
+      await query(SQL.insert, [
+        ref, token, b.date, b.time, room, b.requesterType, b.firstName, b.lastName,
+        b.email || null, b.phone || null, b.company, b.jobTitle || null, b.attendees,
+        JSON.stringify(b.topics), b.notes || null,
+        b.rsmName || null, b.rsmEmail || null, b.rsmRegion || null,
+        new Date().toISOString(),
+      ]);
+      return getByRef(ref);
+    } catch (err) {
+      if (!/UNIQUE|constraint/i.test(String(err.message))) throw err;
+    }
   }
+  return null;
 }
 
 function publicBooking(row) {
@@ -276,7 +297,7 @@ function publicBooking(row) {
     room: row.room,
     company: row.company,
     name: `${row.first_name} ${row.last_name}`,
-    attendees: row.attendees,
+    attendees: Number(row.attendees),
     topics: JSON.parse(row.topics || '[]'),
     manageUrl: `${PUBLIC_URL}/manage.html?ref=${encodeURIComponent(row.ref)}&token=${encodeURIComponent(row.token)}`,
   };
@@ -497,19 +518,19 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-app.get('/api/availability', (req, res) => {
+app.get('/api/availability', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ timezoneLabel: event.timezoneLabel, days: availability() });
+  res.json({ timezoneLabel: event.timezoneLabel, days: await availability() });
 });
 
-app.post('/api/bookings', rateLimit(10, 10 * 60000), (req, res) => {
+app.post('/api/bookings', rateLimit(Number(process.env.BOOKING_RATE_LIMIT) || 10, 10 * 60000), async (req, res) => {
   const body = req.body || {};
   if (body.website) return res.status(400).json({ error: 'Invalid submission.' }); // honeypot
   const { booking, errors } = validateBooking(body);
   if (Object.keys(errors).length) {
     return res.status(400).json({ error: 'Please correct the highlighted fields.', fields: errors });
   }
-  const row = createBooking(booking);
+  const row = await createBooking(booking);
   if (!row) {
     return res.status(409).json({
       error: 'Sorry, that time slot was just booked. Please choose another time.',
@@ -520,8 +541,8 @@ app.post('/api/bookings', rateLimit(10, 10 * 60000), (req, res) => {
   res.status(201).json({ booking: publicBooking(row), icsUrl: `/api/bookings/${row.ref}/ics?token=${row.token}` });
 });
 
-function loadOwnedBooking(req, res) {
-  const row = stmt.byRef.get(String(req.params.ref));
+async function loadOwnedBooking(req, res) {
+  const row = await getByRef(String(req.params.ref));
   if (!row || !safeEqual(req.query.token || '', row.token)) {
     res.status(404).json({ error: 'Booking not found.' });
     return null;
@@ -529,25 +550,24 @@ function loadOwnedBooking(req, res) {
   return row;
 }
 
-app.get('/api/bookings/:ref', (req, res) => {
-  const row = loadOwnedBooking(req, res);
+app.get('/api/bookings/:ref', async (req, res) => {
+  const row = await loadOwnedBooking(req, res);
   if (row) res.json({ booking: publicBooking(row) });
 });
 
-app.get('/api/bookings/:ref/ics', (req, res) => {
-  const row = loadOwnedBooking(req, res);
+app.get('/api/bookings/:ref/ics', async (req, res) => {
+  const row = await loadOwnedBooking(req, res);
   if (!row) return;
   res.set('Content-Type', 'text/calendar; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="${row.ref}.ics"`);
   res.send(buildIcs(row));
 });
 
-app.post('/api/bookings/:ref/cancel', rateLimit(20, 10 * 60000), (req, res) => {
-  const row = loadOwnedBooking(req, res);
+app.post('/api/bookings/:ref/cancel', rateLimit(20, 10 * 60000), async (req, res) => {
+  const row = await loadOwnedBooking(req, res);
   if (!row) return;
   if (row.status === 'cancelled') return res.json({ booking: publicBooking(row) });
-  stmt.cancel.run(new Date().toISOString(), row.ref);
-  const updated = stmt.byRef.get(row.ref);
+  const updated = await cancelBooking(row.ref);
   sendEmails(updated, 'cancelled').catch((e) => console.error(e));
   res.json({ booking: publicBooking(updated) });
 });
@@ -568,7 +588,7 @@ function adminRow(row) {
     phone: row.phone,
     company: row.company,
     jobTitle: row.job_title,
-    attendees: row.attendees,
+    attendees: Number(row.attendees),
     topics: JSON.parse(row.topics || '[]'),
     notes: row.notes,
     rsmName: row.rsm_name,
@@ -579,23 +599,23 @@ function adminRow(row) {
   };
 }
 
-app.get('/api/admin/bookings', requireAdmin, (req, res) => {
+app.get('/api/admin/bookings', requireAdmin, async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ rooms: event.rooms, days: availability(), bookings: stmt.all.all().map(adminRow) });
+  const [days, rows] = await Promise.all([availability(), query(SQL.all)]);
+  res.json({ rooms: event.rooms, days, bookings: rows.map(adminRow) });
 });
 
-app.post('/api/admin/bookings/:ref/cancel', requireAdmin, (req, res) => {
-  const row = stmt.byRef.get(String(req.params.ref));
+app.post('/api/admin/bookings/:ref/cancel', requireAdmin, async (req, res) => {
+  let row = await getByRef(String(req.params.ref));
   if (!row) return res.status(404).json({ error: 'Booking not found.' });
   if (row.status === 'confirmed') {
-    stmt.cancel.run(new Date().toISOString(), row.ref);
-    const updated = stmt.byRef.get(row.ref);
-    if (req.query.notify !== '0') sendEmails(updated, 'cancelled').catch((e) => console.error(e));
+    row = await cancelBooking(row.ref);
+    if (req.query.notify !== '0') sendEmails(row, 'cancelled').catch((e) => console.error(e));
   }
-  res.json({ booking: adminRow(stmt.byRef.get(row.ref)) });
+  res.json({ booking: adminRow(row) });
 });
 
-app.get('/api/admin/bookings.csv', requireAdmin, (req, res) => {
+app.get('/api/admin/bookings.csv', requireAdmin, async (req, res) => {
   const cols = [
     ['ref', 'Confirmation'], ['status', 'Status'], ['date', 'Date'], ['timeLabel', 'Time'], ['room', 'Room'],
     ['company', 'Company'], ['firstName', 'First name'], ['lastName', 'Last name'], ['jobTitle', 'Title'],
@@ -608,7 +628,7 @@ app.get('/api/admin/bookings.csv', requireAdmin, (req, res) => {
     if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // guard against spreadsheet formula injection
     return `"${s.replace(/"/g, '""')}"`;
   };
-  const rows = stmt.all.all().map(adminRow);
+  const rows = (await query(SQL.all)).map(adminRow);
   const csv = [cols.map((c) => esc(c[1])).join(',')]
     .concat(rows.map((r) => cols.map((c) => esc(r[c[0]])).join(',')))
     .join('\r\n');
@@ -651,11 +671,19 @@ function loadDotEnv(file) {
 }
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`GigaDevice CES booking site running at ${PUBLIC_URL}`);
+  ready
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`GigaDevice CES booking site running at ${PUBLIC_URL}`);
+        console.log(process.env.TURSO_DATABASE_URL ? 'Storing bookings in Turso.' : `Storing bookings in ${path.resolve(DB_PATH)}`);
     if (!ADMIN_PASSWORD) console.warn('ADMIN_PASSWORD is not set. The admin dashboard is disabled.');
-    if (!transporter) console.warn('SMTP is not configured. Confirmation emails are disabled.');
-  });
+        if (!transporter) console.warn('SMTP is not configured. Confirmation emails are disabled.');
+      });
+    })
+    .catch((err) => {
+      console.error('Could not open the database:', err.message);
+      process.exit(1);
+    });
 }
 
-module.exports = { app, availability, zonedToUtc, buildIcs };
+module.exports = { app, ready, availability, zonedToUtc, buildIcs };

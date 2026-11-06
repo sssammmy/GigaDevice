@@ -1,20 +1,27 @@
+# Render Blueprint for the free plan.
+# Bookings are stored in a free Turso database because free Render services
+# have no persistent disk. Your site URL will be https://<name>.onrender.com
 services:
   - type: web
-    name: gigadevice-ces-booking
+    name: gigadevice-ces
     runtime: node
-    plan: starter
+    plan: free
+    branch: main
     buildCommand: npm ci --omit=dev
     startCommand: node server.js
+    healthCheckPath: /api/config
     envVars:
       - key: NODE_VERSION
         value: 22.13.0
-      - key: DB_PATH
-        value: /var/data/bookings.db
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: PUBLIC_URL
-        sync: false
       - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
         sync: false
       - key: SMTP_USER
         sync: false
@@ -24,7 +31,3 @@ services:
         sync: false
       - key: NOTIFY_EMAILS
         sync: false
-    disk:
-      name: bookings
-      mountPath: /var/data
-      sizeGB: 1
