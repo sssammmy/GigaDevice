@@ -468,7 +468,11 @@ async function deliver({ to, subject, text, replyTo, attachments = [] }) {
       try {
         data = JSON.parse(body);
       } catch {
-        throw new Error(`Gmail relay returned an unexpected response (HTTP ${res.status}). Check the script is deployed with access set to Anyone.`);
+        throw new Error(
+          res.status === 401 || res.status === 403 || /accounts\.google\.com|ServiceLogin/i.test(body)
+            ? `Google asked for a sign-in (HTTP ${res.status}), so the script is not open to Anyone. In the script, use Deploy, Manage deployments, edit, set Who has access to Anyone, choose New version, and Deploy. If Anyone is not offered, your company account blocks it, so set the script up in a personal Gmail account instead.`
+            : `Gmail relay returned an unexpected response (HTTP ${res.status}). Check the script is deployed with access set to Anyone.`
+        );
       }
       if (!data.ok) throw new Error(`Gmail relay: ${data.error || 'unknown error'}`);
     } else if (emailMode === 'smtp') {
