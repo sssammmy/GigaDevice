@@ -34,7 +34,7 @@ Edit `config/event.json` and restart.
 | `eventName`, `tagline`, `venue`, `booth` | Text shown on the site and in invites |
 | `days` | Each show day with start and end time (Las Vegas local time) |
 | `slotMinutes` | Meeting length |
-| `rooms` | Meeting rooms. The number of rooms is how many meetings can run at the same time |
+| `rooms` | Meeting rooms. Set to one room, so each time slot can be booked only once. Add rooms to allow meetings at the same time |
 | `blockedSlots` | Times to close, such as lunch |
 | `topics` | Topic choices on the form |
 | `regions` | RSM region choices |

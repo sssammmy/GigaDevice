@@ -9,7 +9,7 @@
   "timezone": "America/Los_Angeles",
   "timezoneLabel": "PT",
   "slotMinutes": 30,
-  "rooms": ["Meeting Room A", "Meeting Room B", "Meeting Room C"],
+  "rooms": ["GigaDevice Meeting Room"],
   "days": [
     { "date": "2027-01-06", "start": "10:00", "end": "18:00" },
     { "date": "2027-01-07", "start": "09:00", "end": "18:00" },
