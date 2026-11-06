@@ -416,11 +416,11 @@ function scriptUrlProblem() {
   const preview = v.length > 60 ? `${v.slice(0, 40)}...${v.slice(-12)}` : v;
   return `${key} is not a Google script web app URL. It currently starts "${preview.slice(0, 40)}"${v.length > 40 ? ` and ends "${v.slice(-12)}"` : ''} (${v.length} characters). ${fix}`;
 }
-const SECRET_KEY =
-  'GMAIL_SCRIPT_SECRET' in process.env
-    ? 'GMAIL_SCRIPT_SECRET'
-    : Object.keys(process.env).find((k) => /gmail.*secret|script.*secret/i.test(k));
-const GMAIL_SCRIPT_SECRET = String((SECRET_KEY && process.env[SECRET_KEY]) || '').trim();
+const SECRET_KEY = String(process.env.GMAIL_SCRIPT_SECRET || '').trim()
+  ? 'GMAIL_SCRIPT_SECRET'
+  : Object.keys(process.env).find((k) => /secret/i.test(k) && !/admin|smtp|turso|auth/i.test(k) && String(process.env[k]).trim()) ||
+    ('GMAIL_SCRIPT_SECRET' in process.env ? 'GMAIL_SCRIPT_SECRET' : undefined);
+const GMAIL_SCRIPT_SECRET = String((SECRET_KEY && process.env[SECRET_KEY]) || '').trim().replace(/^["']|["']$/g, '');
 const ON_RENDER = Boolean(process.env.RENDER);
 
 let transporter = null;
@@ -745,7 +745,12 @@ app.post('/api/admin/test-email', requireAdmin, async (req, res) => {
     });
   }
   if (emailMode === 'gmail' && !GMAIL_SCRIPT_SECRET) {
-    return res.status(400).json({ ok: false, error: 'GMAIL_SCRIPT_SECRET is missing in Render. Use the same value as SECRET in the Google script.' });
+    return res.status(400).json({
+      ok: false,
+      error: SECRET_KEY
+        ? `${SECRET_KEY} is empty in Render. Paste the same value as SECRET in the Google script, then Save Changes.`
+        : `GMAIL_SCRIPT_SECRET is missing in Render. Add it with the same value as SECRET in the Google script, then Save Changes. Settings the site can see: ${visibleSettingNames()}.`,
+    });
   }
   if (!NOTIFY_EMAILS.length) {
     return res.status(400).json({
