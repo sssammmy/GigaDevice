@@ -4,7 +4,7 @@ Public website where customers and GigaDevice RSMs book meetings with the GigaDe
 
 ## What it does
 
-* Branded landing page with event dates, venue and booth
+* Branded landing page with event dates, hotel and meeting suite
 * Two booking paths: customers book for themselves, RSMs book on behalf of a customer
 * Live slot availability across multiple meeting rooms with no double booking
 * Confirmation page, calendar invite (.ics) and a private link to view or cancel
@@ -31,7 +31,7 @@ Edit `config/event.json` and restart.
 
 | Setting | Purpose |
 | --- | --- |
-| `eventName`, `tagline`, `venue`, `booth` | Text shown on the site and in invites |
+| `eventName`, `tagline`, `venue`, `address`, `suite` | Text shown on the site and in invites. Put the suite number in `suite` once known, for example "Suite 2410" |
 | `days` | Each show day with start and end time (Las Vegas local time) |
 | `slotMinutes` | Meeting length |
 | `rooms` | Meeting rooms. Set to one room, so each time slot can be booked only once. Add rooms to allow meetings at the same time |
@@ -40,7 +40,7 @@ Edit `config/event.json` and restart.
 | `regions` | RSM region choices |
 | `contactEmail` | Shown in the header, footer and emails |
 
-CES 2027 dates are preset to January 6 to 9, 2027. Confirm the dates and booth number before launch.
+CES 2027 dates are preset to January 6 to 9, 2027. Meetings are in a private suite at Fontainebleau Las Vegas. Confirm the dates and add the suite number before launch.
 
 ## Branding
 

@@ -150,3 +150,16 @@ test('simultaneous requests never double book a room', async () => {
   assert.strictEqual(new Set(ok.map((r) => r.body.booking.room)).size, event.rooms.length);
   assert.ok(results.filter((r) => r.status !== 201).every((r) => r.status === 409 || r.status === 429));
 });
+
+test('a booking under an old room name still blocks the slot', async () => {
+  const { createClient } = require('@libsql/client');
+  const db = createClient({ url: `file:${process.env.DB_PATH}` });
+  const day = event.days[2];
+  await db.execute({
+    sql: `INSERT INTO bookings (ref, token, date, time, room, requester_type, first_name, last_name, company, created_at)
+          VALUES ('GD-OLDROOM', 't', ?, ?, 'Old Room Name', 'customer', 'A', 'B', 'Old Co', ?)`,
+    args: [day.date, day.start, new Date().toISOString()],
+  });
+  const r = await post('/api/bookings', customer({ date: day.date, time: day.start }));
+  assert.strictEqual(r.status, 409);
+});

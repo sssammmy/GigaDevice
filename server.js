@@ -271,7 +271,10 @@ function createBooking(b) {
 
 async function insertBooking(b) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const used = new Set((await query(SQL.activeInSlot, [b.date, b.time])).map((r) => r.room));
+    const taken = (await query(SQL.activeInSlot, [b.date, b.time])).map((r) => r.room);
+    // Count bookings, not just room names, so renaming a room never frees a taken slot.
+    if (taken.length >= event.rooms.length) return null;
+    const used = new Set(taken);
     const room = event.rooms.find((r) => !used.has(r));
     if (!room) return null;
     const ref = newRef();
@@ -292,6 +295,12 @@ async function insertBooking(b) {
   return null;
 }
 
+function locationText(room) {
+  return [`${room}${event.suite ? ` (${event.suite})` : ''}`, event.venue, event.address || event.city]
+    .filter(Boolean)
+    .join(', ');
+}
+
 function publicBooking(row) {
   return {
     ref: row.ref,
@@ -301,6 +310,7 @@ function publicBooking(row) {
     dateLabel: formatDate(row.date),
     timeLabel: `${formatTime(row.time)} to ${formatTime(fromMinutes(toMinutes(row.time) + event.slotMinutes))} ${event.timezoneLabel}`,
     room: row.room,
+    location: locationText(row.room),
     company: row.company,
     name: `${row.first_name} ${row.last_name}`,
     attendees: Number(row.attendees),
@@ -341,7 +351,7 @@ function foldLine(line) {
 function buildIcs(row) {
   const start = zonedToUtc(row.date, row.time, event.timezone);
   const end = new Date(start.getTime() + event.slotMinutes * 60000);
-  const location = `${event.company} ${row.room}, ${event.booth}, ${event.venue}, ${event.city}`;
+  const location = locationText(row.room);
   const description = [
     `Meeting with ${event.company} at ${event.eventName}.`,
     `Confirmation: ${row.ref}`,
@@ -507,8 +517,7 @@ function bookingSummaryText(row) {
     `Confirmation: ${p.ref}`,
     `Date: ${p.dateLabel}`,
     `Time: ${p.timeLabel}`,
-    `Room: ${p.room}`,
-    `Location: ${event.booth}, ${event.venue}, ${event.city}`,
+    `Location: ${locationText(row.room)}`,
     `Company: ${row.company}`,
     `Contact: ${p.name}${row.job_title ? `, ${row.job_title}` : ''}`,
     row.email ? `Email: ${row.email}` : null,
@@ -619,7 +628,8 @@ app.get('/api/config', (req, res) => {
     tagline: event.tagline,
     city: event.city,
     venue: event.venue,
-    booth: event.booth,
+    address: event.address || '',
+    suite: event.suite || '',
     meetingLocationNote: event.meetingLocationNote,
     timezoneLabel: event.timezoneLabel,
     slotMinutes: event.slotMinutes,

@@ -28,7 +28,7 @@
       ['Status', cancelled ? 'Cancelled' : 'Confirmed'],
       ['Date', b.dateLabel],
       ['Time', b.timeLabel],
-      ['Room', b.room],
+      ['Location', b.location],
       ['Company', b.company],
       ['Contact', b.name],
       ['Attendees', String(b.attendees)],

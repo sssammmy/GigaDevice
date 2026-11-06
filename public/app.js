@@ -43,7 +43,7 @@
     $('tagline').textContent = cfg.tagline;
     $('factDates').textContent = cfg.dateRange.replace(/, \d{4}(?= to )/, '');
     $('factVenue').textContent = cfg.venue;
-    $('factBooth').textContent = cfg.booth;
+    $('factSuite').textContent = cfg.suite || 'Private meeting suite';
     $('slotHint').textContent = `Each meeting is ${cfg.slotMinutes} minutes. Times shown in Las Vegas time (${cfg.timezoneLabel}).`;
     const mail = `mailto:${cfg.contactEmail}`;
     $('contactLink').href = mail;
@@ -226,8 +226,7 @@
     const rows = [
       ['Date', b.dateLabel],
       ['Time', b.timeLabel],
-      ['Room', b.room],
-      ['Location', `${state.config.booth}, ${state.config.venue}`],
+      ['Location', b.location],
       ['Company', b.company],
       ['Contact', b.name],
       ['Attendees', String(b.attendees)],
