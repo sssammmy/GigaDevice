@@ -135,7 +135,7 @@
     if (!res.ok) return;
     const s = await res.json();
     const mode = { gmail: 'Sending through your Gmail relay', smtp: 'Sending through SMTP', off: 'Email is OFF. Set it up in Render to get notifications.' }[s.mode];
-    $('emailMode').textContent = s.mode === 'off' ? mode : `${mode}. Booking alerts go to: ${s.notify.length ? s.notify.join(', ') : 'nobody (NOTIFY_EMAILS is empty)'}`;
+    $('emailMode').textContent = s.smtpBlocked ? 'Email is OFF. Render blocks SMTP, so add GMAIL_SCRIPT_URL in Render.' : s.mode === 'off' ? mode : `${mode}. Booking alerts go to: ${s.notify.length ? s.notify.join(', ') : 'nobody (NOTIFY_EMAILS is empty)'}`;
     $('emailMode').className = s.mode === 'off' || !s.notify.length ? 'small err-text' : 'small';
     $('emailLog').replaceChildren(
       ...s.log.slice(0, 8).map((e) =>

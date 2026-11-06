@@ -380,11 +380,23 @@ function buildIcs(row) {
 //    a small Google Apps Script web app that sends from your own Gmail.
 //    Set GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET. See tools/gmail-relay.gs.
 // 2. SMTP: set SMTP_HOST and related settings. Needs a host that allows SMTP.
-const GMAIL_SCRIPT_URL = (process.env.GMAIL_SCRIPT_URL || '').trim();
-const GMAIL_SCRIPT_SECRET = process.env.GMAIL_SCRIPT_SECRET || '';
+// Find the relay URL even if the setting name has a typo: any setting whose
+// value is an Apps Script web app URL counts.
+const SCRIPT_URL_RE = /^https:\/\/script\.google\.com\/\S+\/exec\/?$/;
+const GMAIL_KEY =
+  (process.env.GMAIL_SCRIPT_URL || '').trim()
+    ? 'GMAIL_SCRIPT_URL'
+    : Object.keys(process.env).find((k) => SCRIPT_URL_RE.test(String(process.env[k]).trim()));
+const GMAIL_SCRIPT_URL = GMAIL_KEY ? String(process.env[GMAIL_KEY]).trim().replace(/\/$/, '') : '';
+const SECRET_KEY =
+  'GMAIL_SCRIPT_SECRET' in process.env
+    ? 'GMAIL_SCRIPT_SECRET'
+    : Object.keys(process.env).find((k) => /gmail.*secret|script.*secret/i.test(k));
+const GMAIL_SCRIPT_SECRET = String((SECRET_KEY && process.env[SECRET_KEY]) || '').trim();
+const ON_RENDER = Boolean(process.env.RENDER);
 
 let transporter = null;
-if (!GMAIL_SCRIPT_URL && process.env.SMTP_HOST) {
+if (!GMAIL_SCRIPT_URL && process.env.SMTP_HOST && !ON_RENDER) {
   const nodemailer = require('nodemailer');
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -440,13 +452,17 @@ async function deliver({ to, subject, text, replyTo, attachments = [] }) {
         text,
         attachments,
       });
+    } else if (ON_RENDER && process.env.SMTP_HOST) {
+      throw new Error('Render blocks SMTP email. Add GMAIL_SCRIPT_URL in Render (the Google script URL ending in /exec) and remove the SMTP settings.');
     } else {
       throw new Error('Email is not configured.');
     }
     logEmail({ ok: true, to: to.join(', '), subject });
   } catch (err) {
     if (emailMode === 'gmail' && !/^Gmail relay/.test(err.message)) {
-      err.message = `Could not reach the Gmail relay (${err.message}). Check GMAIL_SCRIPT_URL in Render.`;
+      err.message = /abort|timeout/i.test(err.message)
+        ? 'The Google script did not answer within 30 seconds. Open the script URL in a browser to check it shows "Gmail relay is running", then try again.'
+        : `Could not reach the Google script (${err.message}). Check GMAIL_SCRIPT_URL in Render.`;
     }
     logEmail({ ok: false, to: to.join(', '), subject, error: err.message });
     throw err;
@@ -681,12 +697,20 @@ app.post('/api/admin/bookings/:ref/cancel', requireAdmin, async (req, res) => {
 
 app.get('/api/admin/email-status', requireAdmin, (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ mode: emailMode, notify: NOTIFY_EMAILS, log: emailLog });
+  res.json({ mode: emailMode, notify: NOTIFY_EMAILS, log: emailLog, smtpBlocked: emailMode === 'off' && Boolean(process.env.SMTP_HOST) });
 });
 
 app.post('/api/admin/test-email', requireAdmin, async (req, res) => {
   if (emailMode === 'off') {
-    return res.status(400).json({ ok: false, error: 'Email is not set up. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET in Render.' });
+    return res.status(400).json({
+      ok: false,
+      error: process.env.SMTP_HOST
+        ? 'Render blocks SMTP email. Add GMAIL_SCRIPT_URL (the Google script URL ending in /exec) and GMAIL_SCRIPT_SECRET in Render, and remove the SMTP settings.'
+        : 'Email is not set up. Add GMAIL_SCRIPT_URL and GMAIL_SCRIPT_SECRET in Render.',
+    });
+  }
+  if (emailMode === 'gmail' && !GMAIL_SCRIPT_SECRET) {
+    return res.status(400).json({ ok: false, error: 'GMAIL_SCRIPT_SECRET is missing in Render. Use the same value as SECRET in the Google script.' });
   }
   if (!NOTIFY_EMAILS.length) {
     return res.status(400).json({
